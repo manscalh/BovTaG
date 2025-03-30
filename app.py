@@ -12,13 +12,13 @@ from dotenv import load_dotenv
 # ✅ Deve ser a primeira linha do script!
 st.set_page_config(page_title="BovTag Masters", layout="wide")
 
-# Configurar auto-refresh a cada 10 segundos usando query_params
-st.query_params["dummy"] = str(st.session_state.get("refresh_counter", 0))
-st.session_state["refresh_counter"] = st.session_state.get("refresh_counter", 0) + 1
+# # Configurar auto-refresh a cada 10 segundos usando query_params
+# st.query_params["dummy"] = str(st.session_state.get("refresh_counter", 0))
+# st.session_state["refresh_counter"] = st.session_state.get("refresh_counter", 0) + 1
 
-# Adicionando meta tag para recarregar a página
-st_autorefresh = st.empty()
-st_autorefresh.markdown("<meta http-equiv='refresh' content='60'>", unsafe_allow_html=True)
+# # Adicionando meta tag para recarregar a página
+# st_autorefresh = st.empty()
+# st_autorefresh.markdown("<meta http-equiv='refresh' content='60'>", unsafe_allow_html=True)
 
 # Simulação de dados atualizados
 st.write(f"Última atualização: {time.strftime('%H:%M:%S')}")
@@ -91,7 +91,7 @@ COLECAO = os.getenv("COLECAO")
 # Configuração do MongoDB
 client = pymongo.MongoClient(URI)
 db = client["db_master"]
-collection = db["sensores"]
+collection = db["curral"]
 collection_fazenda = db["fazenda"]
 
 # Função para obter dados do MongoDB
@@ -138,12 +138,7 @@ if not df.empty:
         st.header("Filtros")
 
         # Filtro por data
-        if (df["data"].max() >=  date.today()):
-            data_selecionada = st.date_input("Selecione a Data", df["data"].max())
-
-        else:
-             # Definir a data atual como padrão
-            data_selecionada = st.date_input("Selecione a Data", date.today())
+        data_selecionada = st.date_input("Selecione a Data", df["data"].max())
 
         # Filtro por mês
         mes_selecionado = st.selectbox("Selecione o Mês", df["mes"].unique().astype(str))
@@ -154,6 +149,7 @@ if not df.empty:
     # Aplicando os filtros
     df_filtrado = df[(df["data"] == data_selecionada) & (df["mes"].astype(str) == mes_selecionado)]
     df_filtrado_mes = df[(df["mes"].astype(str) == mes_selecionado)]
+
     if boi_selecionado != "Todos":
         df_filtrado = df_filtrado[df_filtrado["id_boi"] == boi_selecionado]
 
@@ -177,8 +173,6 @@ if not df.empty:
         </div>
         """
 
-
-
     # 📌 Exibindo os KPIs com caixas estilizadas
     with col1:
         st.markdown(create_box("Fazenda", df_fazenda["fazenda"].iloc[0] if not df_fazenda.empty else "N/A"), unsafe_allow_html=True)
@@ -199,7 +193,7 @@ if not df.empty:
     # 🔹 Primeiro gráfico: Linhas por Hora
     with col1:
             horas_completas = pd.DataFrame({"hora": range(0, 24)})
-            linhas_por_hora = df_filtrado.groupby("hora").size().reset_index(name="quantidade")
+            linhas_por_hora = df_filtrado.groupby("hora").size().reset_index(name="quantidade" , inplace=False)
             linhas_por_hora = horas_completas.merge(linhas_por_hora, on="hora", how="left").fillna(0)
 
             fig = px.line(
@@ -229,15 +223,13 @@ if not df.empty:
     # 🔹 Segundo gráfico: Distribuição das Quantidades Diárias
     with col2:
             # Gráfico de barras para a distribuição das quantidades diárias
-            # Cria uma lista de dias de 1 a 31
             dias_mes = pd.DataFrame({"dia": range(1, 32)})
 
-            print('filter',df_filtrado["createdAt"].dt.day)
             # Agrupa os dados por dia e conta as quantidades
-            df_diario = df_filtrado_mes.groupby(df_filtrado_mes["createdAt"].dt.day).size().reset_index(name="quantidade")
-            
+            df_diario = df_filtrado_mes.groupby(pd.to_datetime(df_filtrado_mes["data"]).dt.day).size().reset_index(name="quantidade", inplace=False)
+
             # Mescla os dados de dias com o DataFrame para garantir todos os dias do mês
-            df_diario_completo = dias_mes.merge(df_diario, left_on="dia", right_on="createdAt", how="left").fillna(0)
+            df_diario_completo = dias_mes.merge(df_diario, left_on="dia", right_on="data", how="left").fillna(0)
 
             # Gráfico de barras para a distribuição das quantidades diárias
             fig_diario = px.bar(
@@ -269,7 +261,7 @@ if not df.empty:
     col1, col2 = st.columns(2)
     with col1:
             total_registros = len(df_filtrado)
-            total_bois_fazenda = df_filtrado["id_boi"].nunique() if not df_filtrado.empty else 0
+            total_bois_fazenda = df_fazenda["qty"].iloc[0] if not df_fazenda.empty else 0
 
             # 📊 Pequeno gráfico de Pizza na quarta coluna
             fig_pizza_small = px.pie(
@@ -297,16 +289,17 @@ if not df.empty:
     # 🔹 Gráfico de barras para quantidade de _id por mês (mostrando todos os meses)
         if not df_filtrado.empty:
             # Converter a coluna "mes" para o formato abreviado (ex: jan, fev, mar, etc.)
-            df_filtrado['mes'] = df_filtrado['mes'].dt.strftime('%b')  # %b retorna o nome abreviado do mês
-            
+            df_filtrado_mes['mes'] = df_filtrado_mes['createdAt'].dt.strftime('%b')  # %b retorna o nome abreviado do mês
+
             # Garantir que todos os meses sejam exibidos
             meses_completos = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
             
             # Agrupar os dados por mês e contar o número de registros (_id)
-            df_mensal = df_filtrado.groupby('mes').size().reset_index(name="quantidade")
+            df_mensal = df_filtrado_mes.groupby('mes').size().reset_index(name="quantidade")
             
             # Adicionando os meses que não têm dados (preenchendo com 0)
-            df_mensal = df_mensal.set_index('mes').reindex(meses_completos, fill_value=0).reset_index()
+            df_mensal = df_mensal.set_index('mes').reindex(meses_completos, fill_value=0).reset_index(inplace=False)
+
             df_mensal.columns = ['mes', 'quantidade']
             
             # Gráfico de barras para a quantidade de _id por mês
